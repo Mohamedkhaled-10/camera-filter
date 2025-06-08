@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>كاميرا</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      background-color: black;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+
+    #camera-container {
+      position: relative;
+      height: 70vh;
+      width: 100vw;
+    }
+
+    video {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 100%;
+      object-fit: cover;
+      filter: none;
+      z-index: 1;
+    }
+
+    #filter-select, #switch-button {
+      position: absolute;
+      top: 10px;
+      z-index: 2;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      padding: 8px 15px;
+      border-radius: 10px;
+      font-size: 16px;
+      border: none;
+    }
+
+    #filter-select {
+      left: 50%;
+      transform: translateX(-50%);
+    }
+
+    #switch-button {
+      right: 10px;
+    }
+
+    #capture-button {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 70px;
+      height: 70px;
+      background: white;
+      border-radius: 50%;
+      border: 5px solid #ccc;
+      z-index: 2;
+      cursor: pointer;
+    }
+
+    canvas {
+      display: none;
+    }
+
+    #gallery {
+      height: 30vh;
+      background: #111;
+      overflow-x: auto;
+      white-space: nowrap;
+      padding: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .thumb {
+      height: 100%;
+      border-radius: 10px;
+      border: 2px solid #555;
+      cursor: pointer;
+    }
+
+    #preview-modal {
+      display: none;
+      position: fixed;
+      top: 0; left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(0,0,0,0.9);
+      justify-content: center;
+      align-items: center;
+      z-index: 999;
+    }
+
+    #preview-modal img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="camera-container">
+    <video id="video" autoplay playsinline></video>
+    <select id="filter-select">
+      <option value="none">بدون فلتر</option>
+      <option value="grayscale(1)">أبيض وأسود</option>
+      <option value="sepia(1)">قديم</option>
+      <option value="invert(1)">عكسي</option>
+      <option value="contrast(2)">حدة</option>
+      <option value="brightness(1.5)">إضاءة</option>
+    </select>
+    <button id="switch-button">تبديل الكاميرا</button>
+    <button id="capture-button" title="التقاط الصورة"></button>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div id="gallery"></div>
+
+  <div id="preview-modal" onclick="this.style.display='none'">
+    <img id="preview-image" src="" alt="صورة مصغرة" />
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const filterSelect = document.getElementById('filter-select');
+    const captureButton = document.getElementById('capture-button');
+    const canvas = document.getElementById('canvas');
+    const gallery = document.getElementById('gallery');
+    const previewModal = document.getElementById('preview-modal');
+    const previewImage = document.getElementById('preview-image');
+    const switchButton = document.getElementById('switch-button');
+
+    let currentFacingMode = "environment"; // الخلفية افتراضياً
+    let stream;
+
+    async function initCamera(facingMode = "environment") {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode }
+        });
+        video.srcObject = stream;
+      } catch (err) {
+        alert("فشل في تشغيل الكاميرا");
+        console.error(err);
+      }
+    }
+
+    switchButton.addEventListener('click', () => {
+      currentFacingMode = currentFacingMode === "environment" ? "user" : "environment";
+      initCamera(currentFacingMode);
+    });
+
+    initCamera(currentFacingMode);
+
+    filterSelect.addEventListener('change', () => {
+      video.style.filter = filterSelect.value;
+    });
+
+    captureButton.addEventListener('click', () => {
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.filter = filterSelect.value;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const imageData = canvas.toDataURL('image/png');
+
+      // عرض الصورة في المعرض
+      const img = document.createElement('img');
+      img.src = imageData;
+      img.className = 'thumb';
+      img.onclick = () => {
+        previewImage.src = imageData;
+        previewModal.style.display = 'flex';
+      };
+      gallery.appendChild(img);
+
+      // إرسال الصورة للسيرفر
+      fetch('/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData })
+      })
+      .then(response => {
+        if (response.ok) {
+          console.log('تم إرسال الصورة للسيرفر بنجاح');
+        } else {
+          console.error('فشل إرسال الصورة للسيرفر');
+        }
+      })
+      .catch(err => {
+        console.error('خطأ في الاتصال بالسيرفر:', err);
+      });
+    });
+  </script>
+
+</body>
+</html>
